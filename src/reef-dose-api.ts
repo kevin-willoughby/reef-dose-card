@@ -1,0 +1,75 @@
+// Thin wrapper over hass.connection's raw call_service websocket
+// command - used (rather than the newer hass.callService(..., true)
+// overload some HA frontend versions support) specifically because
+// the low-level `{ type: "call_service", return_response: true }`
+// shape is the one documented, version-stable way to get a response
+// back from a service call, regardless of which HA core release this
+// card happens to be running against.
+import type { GroupRecord, HomeAssistant, ScheduleResponse } from "./types";
+
+const DOMAIN = "reef_dose";
+
+async function callWithResponse<T>(
+  hass: HomeAssistant,
+  service: string,
+  serviceData: Record<string, unknown>,
+): Promise<T> {
+  const result = await hass.connection.sendMessagePromise({
+    type: "call_service",
+    domain: DOMAIN,
+    service,
+    service_data: serviceData,
+    return_response: true,
+  });
+  return (result.response as Record<string, unknown>) as T;
+}
+
+async function call(hass: HomeAssistant, service: string, serviceData: Record<string, unknown>): Promise<void> {
+  await hass.callService(DOMAIN, service, serviceData);
+}
+
+export function getSchedule(hass: HomeAssistant, pumpId: string): Promise<ScheduleResponse> {
+  return callWithResponse<ScheduleResponse>(hass, "get_schedule", { pump_id: pumpId });
+}
+
+export function updateScheduleSlots(
+  hass: HomeAssistant,
+  pumpId: string,
+  slots: Record<string, number>,
+): Promise<void> {
+  return call(hass, "update_schedule", { pump_id: pumpId, slots });
+}
+
+export function autoDivideSchedule(hass: HomeAssistant, pumpId: string, dailyTotalMl: number): Promise<void> {
+  return call(hass, "auto_divide_schedule", { pump_id: pumpId, daily_total_ml: dailyTotalMl });
+}
+
+export async function getGroups(hass: HomeAssistant): Promise<GroupRecord[]> {
+  const result = await callWithResponse<{ groups: GroupRecord[] }>(hass, "get_groups", {});
+  return result.groups;
+}
+
+export function createGroup(
+  hass: HomeAssistant,
+  groupId: string,
+  name: string,
+  pumpIds: string[],
+): Promise<void> {
+  return call(hass, "create_group", { group_id: groupId, name, pump_ids: pumpIds });
+}
+
+export function updateGroup(
+  hass: HomeAssistant,
+  groupId: string,
+  fields: { name?: string; pumpIds?: string[]; scalePercent?: number },
+): Promise<void> {
+  const data: Record<string, unknown> = { group_id: groupId };
+  if (fields.name !== undefined) data.name = fields.name;
+  if (fields.pumpIds !== undefined) data.pump_ids = fields.pumpIds;
+  if (fields.scalePercent !== undefined) data.scale_percent = fields.scalePercent;
+  return call(hass, "update_group", data);
+}
+
+export function deleteGroup(hass: HomeAssistant, groupId: string): Promise<void> {
+  return call(hass, "delete_group", { group_id: groupId });
+}

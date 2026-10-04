@@ -1,0 +1,17 @@
+{
+  "name": "reef-dose-card",
+  "version": "0.1.0",
+  "description": "Custom Lovelace card: per-slot schedule editor and scaling-group management for reef-dose, via reef-dose-ha's reef_dose.* services.",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/reef-dose-card.ts --bundle --format=esm --outfile=reef-dose-card.js --minify",
+    "watch": "esbuild src/reef-dose-card.ts --bundle --format=esm --outfile=reef-dose-card.js --watch"
+  },
+  "dependencies": {
+    "lit": "^3.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}
