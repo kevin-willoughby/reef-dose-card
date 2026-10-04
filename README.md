@@ -73,6 +73,12 @@ npm run build    # bundles src/reef-dose-card.ts -> reef-dose-card.js (committed
 npm run watch     # rebuild on change, for local iteration
 ```
 
+**Releasing an update:** bump `version` in `package.json`, commit and push, then create a real
+GitHub Release tagged to match (`gh release create v0.3.0 --title v0.3.0 --notes "..."` or via the
+GitHub UI) — a plain commit isn't enough. HACS only shows a proper version number when a repo has
+GitHub Releases; without one it falls back to showing the raw commit hash (confirmed live:
+`075d687` instead of `0.3.0` until the first release was created).
+
 No test suite — this is a thin UI layer over `reef-dose-ha`'s already-tested
 `reef_dose.*` services (see `reef-dose-ha`'s own test coverage for the logic those
 services wrap). Verify changes by loading the built `reef-dose-card.js` as a HACS
