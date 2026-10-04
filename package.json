@@ -1,6 +1,6 @@
 {
   "name": "reef-dose-card",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Custom Lovelace card: per-slot schedule editor and scaling-group management for reef-dose, via reef-dose-ha's reef_dose.* services.",
   "type": "module",
   "scripts": {

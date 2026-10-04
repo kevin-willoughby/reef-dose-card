@@ -31,6 +31,17 @@ import {
 
 type Tab = "schedule" | "groups";
 
+// Group membership checkboxes must offer every physical pump (1-6),
+// not just whichever subset the card's own pump_ids config happens
+// to list for the Schedule tab - those are independent concerns.
+// Confirmed live this was a real trap, not just a cosmetic gap: a
+// group's actual members can include a pump the card wasn't
+// configured to show a schedule tab for, and the old code built this
+// checkbox list from pump_ids alone, silently omitting that member -
+// saving membership from that view would have dropped it from the
+// group without any visible warning.
+const ALL_PUMP_IDS = ["1", "2", "3", "4", "5", "6"];
+
 // A single reusable "button opens a popup with one number input, Save
 // or Cancel" flow - used for both Auto-Divide and Manual Overall
 // Adjustment, so there's one modal implementation instead of two
@@ -511,13 +522,12 @@ export class ReefDoseCard extends LitElement {
       <div class="group-card">
         <div class="group-header">
           <strong>${group.name}</strong>
-          <span class="group-meta">${group.scalePercent}%</span>
         </div>
         <div class="group-meta">id: ${group.id} · members: ${group.pumpIds.map((id) => `Pump ${id}`).join(", ") || "none"}</div>
         ${editing
           ? html`
               <div class="checkbox-list">
-                ${this._config!.pump_ids.map(
+                ${ALL_PUMP_IDS.map(
                   (id) => html`
                     <label>
                       <input
@@ -562,7 +572,7 @@ export class ReefDoseCard extends LitElement {
           @input=${(e: InputEvent) => (this._newGroupName = (e.target as HTMLInputElement).value)}
         />
         <div class="checkbox-list">
-          ${this._config!.pump_ids.map(
+          ${ALL_PUMP_IDS.map(
             (id) => html`
               <label>
                 <input
