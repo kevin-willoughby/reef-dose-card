@@ -5,7 +5,7 @@
 // shape is the one documented, version-stable way to get a response
 // back from a service call, regardless of which HA core release this
 // card happens to be running against.
-import type { GroupRecord, HomeAssistant, ScheduleResponse } from "./types";
+import type { GroupRecord, GroupScheduleResponse, HomeAssistant, ScheduleResponse } from "./types";
 
 const DOMAIN = "reef_dose";
 
@@ -72,4 +72,20 @@ export function updateGroup(
 
 export function deleteGroup(hass: HomeAssistant, groupId: string): Promise<void> {
   return call(hass, "delete_group", { group_id: groupId });
+}
+
+export function getGroupSchedule(hass: HomeAssistant, groupId: string): Promise<GroupScheduleResponse> {
+  return callWithResponse<GroupScheduleResponse>(hass, "get_group_schedule", { group_id: groupId });
+}
+
+export function updateGroupScheduleSlots(
+  hass: HomeAssistant,
+  groupId: string,
+  slots: Record<string, number>,
+): Promise<void> {
+  return call(hass, "update_group_schedule", { group_id: groupId, slots });
+}
+
+export function autoDivideGroupSchedule(hass: HomeAssistant, groupId: string, dailyTotalMl: number): Promise<void> {
+  return call(hass, "auto_divide_group_schedule", { group_id: groupId, daily_total_ml: dailyTotalMl });
 }

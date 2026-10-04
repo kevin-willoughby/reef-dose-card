@@ -20,14 +20,35 @@ export interface GroupRecord {
   scalePercent: number;
 }
 
+export interface GroupScheduleResponse {
+  id: string;
+  scalePercent: number;
+  // Effective values (base * scalePercent/100) - what's actually
+  // being pushed, identically, to every current member pump.
+  slots: Record<string, number>;
+}
+
 export interface CardConfig {
   type: string;
   // Which pumps' schedules to show - a subset of the integration's
   // full pump list, since not every pump is necessarily worth a tab
   // on every dashboard view.
   pump_ids: string[];
+  // Which scaling groups' own schedules to also show as tabs
+  // alongside the pumps above - a group owns one shared 24-hour
+  // schedule, pushed identically to every current member (see
+  // reef-dose-service's README). Optional - most dashboards only need
+  // this once a group actually exists.
+  group_ids?: string[];
   title?: string;
 }
+
+// One schedule-editable thing this card's Schedule tab can point at -
+// either a single pump's own schedule, or a group's shared one. The
+// row-rendering/edit/auto-divide code is parameterized by this rather
+// than hardcoding "the active pump", so it works identically either
+// way.
+export type ScheduleTarget = { kind: "pump"; id: string } | { kind: "group"; id: string };
 
 // Minimal slice of HA's frontend `hass` object this card actually
 // uses - the real type (from `custom-card-helpers`) is much larger;

@@ -10,15 +10,24 @@
 import { LitElement, html, css, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
+  autoDivideGroupSchedule,
   autoDivideSchedule,
   createGroup,
   deleteGroup,
   getGroups,
+  getGroupSchedule,
   getSchedule,
   updateGroup,
+  updateGroupScheduleSlots,
   updateScheduleSlots,
 } from "./reef-dose-api";
-import { HOURS, type CardConfig, type GroupRecord, type HomeAssistant, type ScheduleResponse } from "./types";
+import {
+  HOURS,
+  type CardConfig,
+  type GroupRecord,
+  type HomeAssistant,
+  type ScheduleTarget,
+} from "./types";
 
 type Tab = "schedule" | "groups";
 
@@ -42,8 +51,8 @@ export class ReefDoseCard extends LitElement {
   private _config?: CardConfig;
 
   @state() private _tab: Tab = "schedule";
-  @state() private _activePumpId = "";
-  @state() private _schedule: ScheduleResponse | null = null;
+  @state() private _activeTarget: ScheduleTarget | null = null;
+  @state() private _scheduleSlots: Record<string, number> | null = null;
   @state() private _scheduleLoading = false;
   @state() private _editingHour: string | null = null;
   @state() private _editValue = "";
@@ -63,8 +72,8 @@ export class ReefDoseCard extends LitElement {
       throw new Error("reef-dose-card: config.pump_ids must be a non-empty array of pump ids, e.g. ['1', '4']");
     }
     this._config = config;
-    if (!this._activePumpId) {
-      this._activePumpId = config.pump_ids[0];
+    if (!this._activeTarget) {
+      this._activeTarget = { kind: "pump", id: config.pump_ids[0] };
     }
   }
 
@@ -72,7 +81,7 @@ export class ReefDoseCard extends LitElement {
     const firstSet = !this._hass;
     this._hass = hass;
     if (firstSet) {
-      void this._loadSchedule();
+      void this._loadActiveSchedule();
       void this._loadGroups();
     }
   }
@@ -318,20 +327,28 @@ export class ReefDoseCard extends LitElement {
   }
 
   // ---- Schedule tab ----------------------------------------------
+  // Target-agnostic: the same 24-row editor works for a single pump's
+  // own schedule or a group's shared one (requirements.md Section 5 -
+  // a group's schedule is pushed identically to every current
+  // member). _activeTarget says which; every load/save/auto-divide
+  // call below dispatches on its `kind`.
 
   private _renderSchedule(): TemplateResult {
-    const pumpIds = this._config!.pump_ids;
+    const pumpTargets: ScheduleTarget[] = this._config!.pump_ids.map((id) => ({ kind: "pump", id }));
+    const groupTargets: ScheduleTarget[] = (this._config!.group_ids ?? []).map((id) => ({ kind: "group", id }));
+    const targets = [...pumpTargets, ...groupTargets];
+
     return html`
-      ${pumpIds.length > 1
+      ${targets.length > 1
         ? html`
             <div class="pump-select">
-              ${pumpIds.map(
-                (id) => html`
+              ${targets.map(
+                (target) => html`
                   <div
-                    class="pump-chip ${id === this._activePumpId ? "active" : ""}"
-                    @click=${() => this._selectPump(id)}
+                    class="pump-chip ${this._isActiveTarget(target) ? "active" : ""}"
+                    @click=${() => this._selectTarget(target)}
                   >
-                    Pump ${id}
+                    ${target.kind === "pump" ? `Pump ${target.id}` : this._groupLabel(target.id)}
                   </div>
                 `,
               )}
@@ -340,21 +357,33 @@ export class ReefDoseCard extends LitElement {
         : ""}
       ${this._scheduleLoading
         ? html`<div>Loading…</div>`
-        : this._schedule
-          ? this._renderScheduleRows(this._schedule)
+        : this._scheduleSlots
+          ? this._renderScheduleRows(this._scheduleSlots)
           : html`<div>No schedule loaded.</div>`}
     `;
   }
 
-  private _renderScheduleRows(schedule: ScheduleResponse): TemplateResult {
-    const dailyMl = Object.values(schedule.slots).reduce((sum, ml) => sum + ml, 0);
+  private _isActiveTarget(target: ScheduleTarget): boolean {
+    return this._activeTarget?.kind === target.kind && this._activeTarget.id === target.id;
+  }
+
+  // Groups tab's _groups list already carries display names - reused
+  // here so a group's schedule tab shows "Complete Parts" rather than
+  // its raw id ("complete-parts"). Falls back to the id itself before
+  // _loadGroups has resolved yet.
+  private _groupLabel(groupId: string): string {
+    return this._groups.find((g) => g.id === groupId)?.name ?? groupId;
+  }
+
+  private _renderScheduleRows(slots: Record<string, number>): TemplateResult {
+    const dailyMl = Object.values(slots).reduce((sum, ml) => sum + ml, 0);
     return html`
       <div class="auto-divide">
         <button @click=${() => this._openAutoDividePrompt(dailyMl)}>Auto-Divide Schedule</button>
         <span class="group-meta">Current total: ${dailyMl.toFixed(2)}mL/day</span>
       </div>
       ${HOURS.map((hour) => {
-        const ml = schedule.slots[hour] ?? 0;
+        const ml = slots[hour] ?? 0;
         const editing = this._editingHour === hour;
         return html`
           <div class="row">
@@ -384,10 +413,10 @@ export class ReefDoseCard extends LitElement {
     `;
   }
 
-  private _selectPump(pumpId: string): void {
-    this._activePumpId = pumpId;
+  private _selectTarget(target: ScheduleTarget): void {
+    this._activeTarget = target;
     this._editingHour = null;
-    void this._loadSchedule();
+    void this._loadActiveSchedule();
   }
 
   // Data is only fetched once on initial hass set (see `set hass`) -
@@ -396,16 +425,19 @@ export class ReefDoseCard extends LitElement {
   // tab) is picked up without needing to re-add the card.
   private _switchTab(tab: Tab): void {
     this._tab = tab;
-    if (tab === "schedule") void this._loadSchedule();
+    if (tab === "schedule") void this._loadActiveSchedule();
     else void this._loadGroups();
   }
 
-  private async _loadSchedule(): Promise<void> {
-    if (!this._hass || !this._activePumpId) return;
+  private async _loadActiveSchedule(): Promise<void> {
+    if (!this._hass || !this._activeTarget) return;
     this._scheduleLoading = true;
     this._error = null;
     try {
-      this._schedule = await getSchedule(this._hass, this._activePumpId);
+      this._scheduleSlots =
+        this._activeTarget.kind === "pump"
+          ? (await getSchedule(this._hass, this._activeTarget.id)).slots
+          : (await getGroupSchedule(this._hass, this._activeTarget.id)).slots;
     } catch (err) {
       this._error = this._errorMessage(err);
     } finally {
@@ -426,18 +458,24 @@ export class ReefDoseCard extends LitElement {
     }
     this._error = null;
     try {
-      await updateScheduleSlots(this._hass!, this._activePumpId, { [hour]: value });
+      const target = this._activeTarget!;
+      if (target.kind === "pump") {
+        await updateScheduleSlots(this._hass!, target.id, { [hour]: value });
+      } else {
+        await updateGroupScheduleSlots(this._hass!, target.id, { [hour]: value });
+      }
       this._editingHour = null;
-      await this._loadSchedule();
+      await this._loadActiveSchedule();
     } catch (err) {
       this._error = this._errorMessage(err);
     }
   }
 
   private _openAutoDividePrompt(currentDailyMl: number): void {
-    const pumpId = this._activePumpId;
+    const target = this._activeTarget!;
+    const label = target.kind === "pump" ? `Pump ${target.id}` : this._groupLabel(target.id);
     this._openPrompt({
-      title: `Auto-Divide Pump ${pumpId} (mL/day)`,
+      title: `Auto-Divide ${label} (mL/day)`,
       initialValue: currentDailyMl,
       min: 0,
       max: 1200,
@@ -445,8 +483,12 @@ export class ReefDoseCard extends LitElement {
       unit: "mL/day",
       onSave: async (value) => {
         try {
-          await autoDivideSchedule(this._hass!, pumpId, value);
-          await this._loadSchedule();
+          if (target.kind === "pump") {
+            await autoDivideSchedule(this._hass!, target.id, value);
+          } else {
+            await autoDivideGroupSchedule(this._hass!, target.id, value);
+          }
+          await this._loadActiveSchedule();
         } catch (err) {
           this._error = this._errorMessage(err);
         }
