@@ -539,7 +539,7 @@ export class ReefDoseCard extends LitElement {
               <div class="actions">
                 <button class="secondary" @click=${() => this._startEditGroup(group)}>Edit Membership</button>
                 <button @click=${() => this._openAdjustmentPrompt(group)}>Manual Overall Adjustment</button>
-                <button class="danger" @click=${() => this._removeGroup(group.id)}>Delete</button>
+                <button class="danger" @click=${() => this._confirmRemoveGroup(group)}>Delete</button>
               </div>
             `}
       </div>
@@ -669,6 +669,18 @@ export class ReefDoseCard extends LitElement {
     }
   }
 
+  // Confirmed live this was too easy to hit by accident: Delete sits
+  // right next to Edit Membership/Manual Overall Adjustment at equal
+  // visual weight, no confirmation, and deleting a group un-tracks
+  // its members from any future rescaling with no undo. A native
+  // confirm() is minimal but was previously entirely absent.
+  private _confirmRemoveGroup(group: GroupRecord): void {
+    const memberList = group.pumpIds.map((id) => `Pump ${id}`).join(", ") || "no members";
+    if (window.confirm(`Delete group "${group.name}"? Members (${memberList}) keep dosing whatever they're currently set to, but will no longer be kept in sync with each other.`)) {
+      void this._removeGroup(group.id);
+    }
+  }
+
   private async _removeGroup(groupId: string): Promise<void> {
     this._error = null;
     try {
@@ -684,9 +696,18 @@ export class ReefDoseCard extends LitElement {
   private _errorMessage(err: unknown): string {
     // HA surfaces a service handler's HomeAssistantError (see
     // reef-dose-ha's services.py) as a rejected promise whose
-    // `.message` is already the clean text that error carried - no
-    // further unwrapping needed.
-    return err instanceof Error ? err.message : String(err);
+    // `.message` is already the clean text that error carried.
+    if (err instanceof Error) return err.message;
+    // hass.connection.sendMessagePromise (used for every response-
+    // carrying call, see reef-dose-api.ts) rejects with the raw WS
+    // error frame on failure - a plain {code, message} object, NOT an
+    // Error instance. String(plainObject) gives the useless
+    // "[object Object]" (confirmed live) unless this is unwrapped
+    // explicitly first.
+    if (err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string") {
+      return (err as { message: string }).message;
+    }
+    return String(err);
   }
 }
 
