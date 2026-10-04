@@ -210,10 +210,10 @@ export class ReefDoseCard extends LitElement {
         <div style="padding: 0 16px 16px">
           ${this._error ? html`<div class="error">${this._error}</div>` : ""}
           <div class="tabs">
-            <div class="tab ${this._tab === "schedule" ? "active" : ""}" @click=${() => (this._tab = "schedule")}>
+            <div class="tab ${this._tab === "schedule" ? "active" : ""}" @click=${() => this._switchTab("schedule")}>
               Schedule
             </div>
-            <div class="tab ${this._tab === "groups" ? "active" : ""}" @click=${() => (this._tab = "groups")}>
+            <div class="tab ${this._tab === "groups" ? "active" : ""}" @click=${() => this._switchTab("groups")}>
               Groups
             </div>
           </div>
@@ -265,7 +265,7 @@ export class ReefDoseCard extends LitElement {
           .value=${this._dailyTotal}
           @input=${(e: InputEvent) => (this._dailyTotal = (e.target as HTMLInputElement).value)}
         />
-        <button @click=${this._applyAutoDivide}>Auto-Divide</button>
+        <button @click=${() => this._applyAutoDivide()}>Auto-Divide</button>
         <span class="group-meta">Current total: ${dailyMl.toFixed(2)}mL/day</span>
       </div>
       ${HOURS.map((hour) => {
@@ -303,6 +303,16 @@ export class ReefDoseCard extends LitElement {
     this._activePumpId = pumpId;
     this._editingHour = null;
     void this._loadSchedule();
+  }
+
+  // Data is only fetched once on initial hass set (see `set hass`) -
+  // re-fetch on every tab switch too, so a change made outside this
+  // card instance (Developer Tools -> Actions, curl, another browser
+  // tab) is picked up without needing to re-add the card.
+  private _switchTab(tab: Tab): void {
+    this._tab = tab;
+    if (tab === "schedule") void this._loadSchedule();
+    else void this._loadGroups();
   }
 
   private async _loadSchedule(): Promise<void> {
@@ -440,7 +450,7 @@ export class ReefDoseCard extends LitElement {
           )}
         </div>
         <div class="actions">
-          <button @click=${this._createGroup}>Create</button>
+          <button @click=${() => this._createGroup()}>Create</button>
           <button class="secondary" @click=${() => (this._showNewGroupForm = false)}>Cancel</button>
         </div>
       </div>
