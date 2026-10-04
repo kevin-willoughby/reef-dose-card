@@ -12,8 +12,8 @@ first.
 
 ## Installation (via HACS)
 
-1. HACS → Frontend → ⋮ (top right) → **Custom repositories**
-2. Add this repo's URL, category **Lovelace**
+1. HACS → ⋮ (top right) → **Custom repositories**
+2. Add this repo's URL, category **Dashboard** (HACS's current name for Lovelace/frontend card repos)
 3. Install **Reef Dose Card**
 4. Edit a dashboard → **+ Add Card** → search **Reef Dose Card** (or add manually, see below)
 
@@ -35,15 +35,25 @@ pump_ids:
 
 ## What it does
 
-**Schedule tab** — pick a pump (if more than one is configured), see all 24 hourly slots, tap
-**Edit** on any row to change that slot's ml amount in place (Save/Cancel), matching the existing
-Dosetronic app's tap-row-to-edit interaction (requirements.md Section 3). A **Daily Total
-(Auto-Divide)** field at the top evenly splits a given ml/day across all 24 slots in one action —
-the schedule's starting point, individual rows still editable afterward.
+Every value-entry action in this card uses the same popup pattern: press a button, a modal appears
+with one number field, **Save** commits it, **Cancel** discards it and closes without changing
+anything.
 
-**Groups tab** — lists every scaling group (name, members, current scale%), with **Edit**
-(membership + scale%) and **Delete** per group, and a **+ New Group** form (id, name, member
-checkboxes) for creating one (requirements.md Section 5).
+**Schedule tab** — pick a pump (if more than one is configured), see all 24 hourly slots, tap
+**Edit** on any row to change that slot's ml amount in place (Save/Cancel appear inline in that
+row), matching the existing Dosetronic app's tap-row-to-edit interaction (requirements.md Section
+3). **Auto-Divide Schedule** opens the same Save/Cancel popup for a daily total ml, pre-filled with
+the current total — Save evenly splits it across all 24 slots and writes it straight to the device
+(the schedule's starting point, individual rows still editable afterward); Cancel leaves the
+schedule untouched.
+
+**Groups tab** — lists every scaling group (name, members, current scale%). **Edit Membership**
+toggles which pumps belong to the group (Save/Cancel inline). **Manual Overall Adjustment** opens
+the Save/Cancel popup for a **delta** percentage, matching the existing Dosetronic app's own name
+for this action (requirements.md Section 5) — enter `-10` and Save to decrease every member pump's
+schedule by 10% of whatever it's *currently* at (not 10 percentage points off a fixed 100% base;
+compounds like any "adjust by X%" control), or Cancel to back out without applying anything.
+**Delete** removes a group, and a **+ New Group** form (id, name, member checkboxes) creates one.
 
 ## Development
 

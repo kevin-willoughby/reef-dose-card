@@ -22,6 +22,20 @@ import { HOURS, type CardConfig, type GroupRecord, type HomeAssistant, type Sche
 
 type Tab = "schedule" | "groups";
 
+// A single reusable "button opens a popup with one number input, Save
+// or Cancel" flow - used for both Auto-Divide and Manual Overall
+// Adjustment, so there's one modal implementation instead of two
+// slightly-different inline forms with inconsistent cancel behavior.
+interface PromptState {
+  title: string;
+  value: string;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  onSave: (value: number) => Promise<void> | void;
+}
+
 @customElement("reef-dose-card")
 export class ReefDoseCard extends LitElement {
   private _hass?: HomeAssistant;
@@ -33,7 +47,6 @@ export class ReefDoseCard extends LitElement {
   @state() private _scheduleLoading = false;
   @state() private _editingHour: string | null = null;
   @state() private _editValue = "";
-  @state() private _dailyTotal = "";
   @state() private _groups: GroupRecord[] = [];
   @state() private _groupsLoading = false;
   @state() private _showNewGroupForm = false;
@@ -42,7 +55,7 @@ export class ReefDoseCard extends LitElement {
   @state() private _newGroupPumpIds = new Set<string>();
   @state() private _editingGroupId: string | null = null;
   @state() private _editGroupPumpIds = new Set<string>();
-  @state() private _editGroupScale = "";
+  @state() private _prompt: PromptState | null = null;
   @state() private _error: string | null = null;
 
   setConfig(config: CardConfig): void {
@@ -200,6 +213,35 @@ export class ReefDoseCard extends LitElement {
       gap: 8px;
       margin-top: 8px;
     }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal {
+      background: var(--card-background-color, #1c1c1c);
+      color: var(--primary-text-color);
+      border-radius: 8px;
+      padding: 20px;
+      min-width: 260px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+    .modal h3 {
+      margin: 0 0 12px;
+    }
+    .modal .field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .modal input[type="number"] {
+      width: 120px;
+    }
   `;
 
   render(): TemplateResult {
@@ -220,7 +262,59 @@ export class ReefDoseCard extends LitElement {
           ${this._tab === "schedule" ? this._renderSchedule() : this._renderGroups()}
         </div>
       </ha-card>
+      ${this._renderPrompt()}
     `;
+  }
+
+  // ---- Shared Save/Cancel prompt modal -----------------------------
+
+  private _openPrompt(opts: Omit<PromptState, "value"> & { initialValue: number }): void {
+    const { initialValue, ...rest } = opts;
+    this._prompt = { ...rest, value: String(initialValue) };
+  }
+
+  private _renderPrompt(): TemplateResult {
+    if (!this._prompt) return html``;
+    const p = this._prompt;
+    return html`
+      <div class="modal-overlay" @click=${(e: Event) => e.target === e.currentTarget && this._cancelPrompt()}>
+        <div class="modal">
+          <h3>${p.title}</h3>
+          <div class="field">
+            <input
+              type="number"
+              min=${p.min}
+              max=${p.max}
+              step=${p.step}
+              .value=${p.value}
+              @input=${(e: InputEvent) => (this._prompt = { ...p, value: (e.target as HTMLInputElement).value })}
+            />
+            <span>${p.unit}</span>
+          </div>
+          <div class="actions">
+            <button @click=${() => this._savePrompt()}>Save</button>
+            <button class="secondary" @click=${() => this._cancelPrompt()}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private async _savePrompt(): Promise<void> {
+    if (!this._prompt) return;
+    const { value, min, max, onSave } = this._prompt;
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < min || num > max) {
+      this._error = `Value must be between ${min} and ${max}.`;
+      return;
+    }
+    this._error = null;
+    this._prompt = null;
+    await onSave(num);
+  }
+
+  private _cancelPrompt(): void {
+    this._prompt = null;
   }
 
   // ---- Schedule tab ----------------------------------------------
@@ -256,16 +350,7 @@ export class ReefDoseCard extends LitElement {
     const dailyMl = Object.values(schedule.slots).reduce((sum, ml) => sum + ml, 0);
     return html`
       <div class="auto-divide">
-        <input
-          type="number"
-          min="0"
-          max="1200"
-          step="0.01"
-          placeholder="Daily total ml"
-          .value=${this._dailyTotal}
-          @input=${(e: InputEvent) => (this._dailyTotal = (e.target as HTMLInputElement).value)}
-        />
-        <button @click=${() => this._applyAutoDivide()}>Auto-Divide</button>
+        <button @click=${() => this._openAutoDividePrompt(dailyMl)}>Auto-Divide Schedule</button>
         <span class="group-meta">Current total: ${dailyMl.toFixed(2)}mL/day</span>
       </div>
       ${HOURS.map((hour) => {
@@ -349,19 +434,24 @@ export class ReefDoseCard extends LitElement {
     }
   }
 
-  private async _applyAutoDivide(): Promise<void> {
-    const value = Number(this._dailyTotal);
-    if (!Number.isFinite(value) || value < 0 || value > 1200) {
-      this._error = "Daily total must be between 0 and 1200ml.";
-      return;
-    }
-    this._error = null;
-    try {
-      await autoDivideSchedule(this._hass!, this._activePumpId, value);
-      await this._loadSchedule();
-    } catch (err) {
-      this._error = this._errorMessage(err);
-    }
+  private _openAutoDividePrompt(currentDailyMl: number): void {
+    const pumpId = this._activePumpId;
+    this._openPrompt({
+      title: `Auto-Divide Pump ${pumpId} (mL/day)`,
+      initialValue: currentDailyMl,
+      min: 0,
+      max: 1200,
+      step: 0.01,
+      unit: "mL/day",
+      onSave: async (value) => {
+        try {
+          await autoDivideSchedule(this._hass!, pumpId, value);
+          await this._loadSchedule();
+        } catch (err) {
+          this._error = this._errorMessage(err);
+        }
+      },
+    });
   }
 
   // ---- Groups tab -------------------------------------------------
@@ -398,21 +488,15 @@ export class ReefDoseCard extends LitElement {
                   `,
                 )}
               </div>
-              <input
-                type="number"
-                min="0"
-                max="1000"
-                .value=${this._editGroupScale}
-                @input=${(e: InputEvent) => (this._editGroupScale = (e.target as HTMLInputElement).value)}
-              />
               <div class="actions">
-                <button @click=${() => this._saveGroup(group.id)}>Save</button>
+                <button @click=${() => this._saveGroupMembership(group.id)}>Save</button>
                 <button class="secondary" @click=${() => (this._editingGroupId = null)}>Cancel</button>
               </div>
             `
           : html`
               <div class="actions">
-                <button class="secondary" @click=${() => this._startEditGroup(group)}>Edit</button>
+                <button class="secondary" @click=${() => this._startEditGroup(group)}>Edit Membership</button>
+                <button @click=${() => this._openAdjustmentPrompt(group)}>Manual Overall Adjustment</button>
                 <button class="danger" @click=${() => this._removeGroup(group.id)}>Delete</button>
               </div>
             `}
@@ -474,7 +558,31 @@ export class ReefDoseCard extends LitElement {
   private _startEditGroup(group: GroupRecord): void {
     this._editingGroupId = group.id;
     this._editGroupPumpIds = new Set(group.pumpIds);
-    this._editGroupScale = String(group.scalePercent);
+  }
+
+  // Opens the shared prompt modal for a group's delta-based "Manual
+  // Overall Adjustment" (requirements.md Section 5, matching the
+  // existing Dosetronic app's name for this exact action) - -10
+  // decreases the group's CURRENT scale by 10% (compounding, like any
+  // "adjust by X%" control), not a target value to type directly.
+  private _openAdjustmentPrompt(group: GroupRecord): void {
+    this._openPrompt({
+      title: `Manual Overall Adjustment — ${group.name} (%)`,
+      initialValue: 0,
+      min: -100,
+      max: 1000,
+      step: 1,
+      unit: "%",
+      onSave: async (delta) => {
+        const newScale = Math.round(group.scalePercent * (1 + delta / 100) * 100) / 100;
+        try {
+          await updateGroup(this._hass!, group.id, { scalePercent: newScale });
+          await this._loadGroups();
+        } catch (err) {
+          this._error = this._errorMessage(err);
+        }
+      },
+    });
   }
 
   private async _loadGroups(): Promise<void> {
@@ -508,18 +616,10 @@ export class ReefDoseCard extends LitElement {
     }
   }
 
-  private async _saveGroup(groupId: string): Promise<void> {
-    const scale = Number(this._editGroupScale);
-    if (!Number.isFinite(scale) || scale < 0 || scale > 1000) {
-      this._error = "Scale must be between 0 and 1000%.";
-      return;
-    }
+  private async _saveGroupMembership(groupId: string): Promise<void> {
     this._error = null;
     try {
-      await updateGroup(this._hass!, groupId, {
-        pumpIds: [...this._editGroupPumpIds],
-        scalePercent: scale,
-      });
+      await updateGroup(this._hass!, groupId, { pumpIds: [...this._editGroupPumpIds] });
       this._editingGroupId = null;
       await this._loadGroups();
     } catch (err) {
