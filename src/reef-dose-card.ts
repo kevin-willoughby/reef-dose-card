@@ -10,6 +10,7 @@
 import { LitElement, html, css, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
+  applyCalibration,
   autoDivideGroupSchedule,
   autoDivideSchedule,
   createGroup,
@@ -19,6 +20,7 @@ import {
   getReservoir,
   getSchedule,
   refillReservoir,
+  startCalibration,
   updateGroup,
   updateGroupScheduleSlots,
   updateScheduleSlots,
@@ -56,7 +58,20 @@ interface PromptState {
   max: number;
   step: number;
   unit: string;
+  saveLabel?: string;
   onSave: (value: number) => Promise<void> | void;
+}
+
+// The confirm step ahead of calibration's measurement prompt - no
+// input, just "are you sure" with a button that kicks off a live
+// device call (start_calibration) before the next screen can open,
+// so it needs its own busy state rather than reusing PromptState.
+interface ConfirmState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  busy: boolean;
+  onConfirm: () => Promise<void> | void;
 }
 
 @customElement("reef-dose-card")
@@ -82,6 +97,7 @@ export class ReefDoseCard extends LitElement {
   @state() private _editingGroupId: string | null = null;
   @state() private _editGroupPumpIds = new Set<string>();
   @state() private _prompt: PromptState | null = null;
+  @state() private _confirm: ConfirmState | null = null;
   @state() private _error: string | null = null;
 
   setConfig(config: CardConfig): void {
@@ -384,6 +400,7 @@ export class ReefDoseCard extends LitElement {
         </div>
       </ha-card>
       ${this._renderPrompt()}
+      ${this._renderConfirm()}
     `;
   }
 
@@ -413,7 +430,7 @@ export class ReefDoseCard extends LitElement {
             <span>${p.unit}</span>
           </div>
           <div class="actions">
-            <button @click=${() => this._savePrompt()}>Save</button>
+            <button @click=${() => this._savePrompt()}>${p.saveLabel ?? "Save"}</button>
             <button class="secondary" @click=${() => this._cancelPrompt()}>Cancel</button>
           </div>
         </div>
@@ -436,6 +453,81 @@ export class ReefDoseCard extends LitElement {
 
   private _cancelPrompt(): void {
     this._prompt = null;
+  }
+
+  // ---- Shared confirm modal (calibration's "Start Calibration?" step) ----
+
+  private _renderConfirm(): TemplateResult {
+    if (!this._confirm) return html``;
+    const c = this._confirm;
+    return html`
+      <div class="modal-overlay" @click=${(e: Event) => e.target === e.currentTarget && this._cancelConfirm()}>
+        <div class="modal">
+          <h3>${c.title}</h3>
+          <p>${c.message}</p>
+          <div class="actions">
+            <button ?disabled=${c.busy} @click=${() => this._confirmConfirm()}>
+              ${c.busy ? "Starting…" : c.confirmLabel}
+            </button>
+            <button class="secondary" ?disabled=${c.busy} @click=${() => this._cancelConfirm()}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private async _confirmConfirm(): Promise<void> {
+    if (!this._confirm || this._confirm.busy) return;
+    this._confirm = { ...this._confirm, busy: true };
+    await this._confirm.onConfirm();
+  }
+
+  private _cancelConfirm(): void {
+    this._confirm = null;
+  }
+
+  // ---- Calibration flow (confirm -> start_calibration -> measure -> apply_calibration) ----
+  // sessionId is threaded through as a closure variable from the
+  // start_calibration response into the measure prompt's onSave, so
+  // it never needs its own top-level piece of card state.
+
+  private _openCalibratePrompt(pumpId: string): void {
+    this._confirm = {
+      title: `Calibrate Pump ${pumpId}`,
+      message: "This briefly runs the pump so you can measure how much it actually dispenses.",
+      confirmLabel: "Start Calibration",
+      busy: false,
+      onConfirm: async () => {
+        try {
+          const sessionId = await startCalibration(this._hass!, pumpId);
+          this._confirm = null;
+          this._openMeasurePrompt(pumpId, sessionId);
+        } catch (err) {
+          this._confirm = null;
+          this._error = this._errorMessage(err);
+        }
+      },
+    };
+  }
+
+  private _openMeasurePrompt(pumpId: string, sessionId: number): void {
+    this._openPrompt({
+      title: `Calibrate Pump ${pumpId} - measured volume (mL)`,
+      initialValue: 0,
+      min: 0.01,
+      max: 2000,
+      step: 0.01,
+      unit: "mL",
+      saveLabel: "Apply",
+      onSave: async (measuredMl) => {
+        try {
+          await applyCalibration(this._hass!, pumpId, sessionId, measuredMl);
+          await this._loadDashboard();
+        } catch (err) {
+          this._error = this._errorMessage(err);
+        }
+      },
+    });
   }
 
   // ---- Schedule tab ----------------------------------------------
@@ -628,6 +720,7 @@ export class ReefDoseCard extends LitElement {
             <div class="dash-days-label">Days Left</div>
           </div>
           <button class="secondary" @click=${() => this._openRefillPrompt(pumpId, reservoir.fullMl)}>Refill</button>
+          <button class="secondary" @click=${() => this._openCalibratePrompt(pumpId)}>Calibrate</button>
         </div>
       </div>
     `;

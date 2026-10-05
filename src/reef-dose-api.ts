@@ -70,6 +70,24 @@ export function refillReservoir(hass: HomeAssistant, pumpId: string, fullMl: num
   return call(hass, "refill_reservoir", { pump_id: pumpId, full_ml: fullMl });
 }
 
+// Two-step calibration: start_calibration runs the pump briefly and
+// hands back a sessionId that must be threaded through to
+// apply_calibration - the firmware silently no-ops on a stale/
+// mismatched session id, so the card never invents one itself.
+export async function startCalibration(hass: HomeAssistant, pumpId: string): Promise<number> {
+  const result = await callWithResponse<{ sessionId: number }>(hass, "start_calibration", { pump_id: pumpId });
+  return result.sessionId;
+}
+
+export function applyCalibration(
+  hass: HomeAssistant,
+  pumpId: string,
+  sessionId: number,
+  measuredMl: number,
+): Promise<void> {
+  return call(hass, "apply_calibration", { pump_id: pumpId, session_id: sessionId, measured_ml: measuredMl });
+}
+
 export function updateScheduleSlots(
   hass: HomeAssistant,
   pumpId: string,
