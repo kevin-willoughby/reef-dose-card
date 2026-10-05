@@ -11,6 +11,7 @@ import { LitElement, html, css, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   applyCalibration,
+  applyGroupAdjustment,
   autoDivideGroupSchedule,
   autoDivideSchedule,
   createGroup,
@@ -926,7 +927,13 @@ export class ReefDoseCard extends LitElement {
   // Overall Adjustment" (requirements.md Section 5, matching the
   // existing Dosetronic app's name for this exact action) - -10
   // decreases the group's CURRENT scale by 10% (compounding, like any
-  // "adjust by X%" control), not a target value to type directly.
+  // "adjust by X%" control), not a target value to type directly. The
+  // compounding math is done server-side (apply_group_adjustment),
+  // not here against group.scalePercent - that value is a snapshot
+  // from whenever this card last fetched it (at most recent tab
+  // switch, per _loadGroups), and computing against a stale snapshot
+  // silently applies the wrong delta if the group changed out-of-band
+  // in between (confirmed live, 2026-10-05).
   private _openAdjustmentPrompt(group: GroupRecord): void {
     this._openPrompt({
       title: `Manual Overall Adjustment — ${group.name} (%)`,
@@ -936,9 +943,8 @@ export class ReefDoseCard extends LitElement {
       step: 1,
       unit: "%",
       onSave: async (delta) => {
-        const newScale = Math.round(group.scalePercent * (1 + delta / 100) * 100) / 100;
         try {
-          await updateGroup(this._hass!, group.id, { scalePercent: newScale });
+          await applyGroupAdjustment(this._hass!, group.id, delta);
           await this._loadGroups();
         } catch (err) {
           this._error = this._errorMessage(err);

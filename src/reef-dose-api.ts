@@ -145,3 +145,11 @@ export function updateGroupScheduleSlots(
 export function autoDivideGroupSchedule(hass: HomeAssistant, groupId: string, dailyTotalMl: number): Promise<void> {
   return call(hass, "auto_divide_group_schedule", { group_id: groupId, daily_total_ml: dailyTotalMl });
 }
+
+// Server-side compounding - deltaPercent applies onto whatever the group is
+// CURRENTLY effectively dosing, computed fresh from the live group record,
+// not a value the card may be holding stale. Prefer this over computing a
+// new scalePercent client-side and calling updateGroup with it.
+export function applyGroupAdjustment(hass: HomeAssistant, groupId: string, deltaPercent: number): Promise<void> {
+  return call(hass, "apply_group_adjustment", { group_id: groupId, delta_percent: deltaPercent });
+}
