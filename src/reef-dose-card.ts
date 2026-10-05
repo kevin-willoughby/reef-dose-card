@@ -199,11 +199,11 @@ export class ReefDoseCard extends LitElement {
       color: var(--secondary-text-color);
       font-variant-numeric: tabular-nums;
     }
-    .dash-today {
-      flex-shrink: 0;
-      font-size: 0.85em;
+    .dash-reservoir-label {
+      margin-top: 2px;
+      font-size: 0.75em;
       color: var(--secondary-text-color);
-      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
     .dash-days {
       flex-shrink: 0;
@@ -212,16 +212,33 @@ export class ReefDoseCard extends LitElement {
       align-items: center;
       gap: 2px;
     }
-    .dash-days-circle {
+    .dash-days-ring {
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      border: 2px solid var(--primary-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* --dash-pct is the reservoir's remaining/full percentage (same
+         ratio as the bar above) - filled portion of the ring, not a
+         days-remaining percentage, since there's no fixed "100%
+         days" to measure against. */
+      background: conic-gradient(
+        var(--primary-color) calc(var(--dash-pct, 0) * 1%),
+        var(--divider-color, #333) 0
+      );
+    }
+    .dash-days-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--card-background-color, #1c1c1c);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
+      font-size: 0.85em;
     }
     .dash-days-label {
       font-size: 0.7em;
@@ -583,18 +600,31 @@ export class ReefDoseCard extends LitElement {
         </div>
       `;
     }
-    const pct = reservoir.fullMl > 0 ? Math.min(100, Math.max(0, (reservoir.remainingMl / reservoir.fullMl) * 100)) : 0;
+    // The bar is today's dosing progress (how much of today's
+    // scheduled total has actually gone out), NOT reservoir level -
+    // that's what the ring below is for instead.
+    const dosedTodayMl = reservoir.dosedTodayMl ?? 0;
+    const dosedTodayPct =
+      reservoir.dailyScheduledMl > 0 ? Math.min(100, Math.max(0, (dosedTodayMl / reservoir.dailyScheduledMl) * 100)) : 0;
+    const reservoirPct =
+      reservoir.fullMl > 0 ? Math.min(100, Math.max(0, (reservoir.remainingMl / reservoir.fullMl) * 100)) : 0;
     return html`
       <div class="dash-row">
         <div class="dash-name">Pump ${pumpId}</div>
         <div class="dash-meta">
           <div class="dash-bar-wrap">
-            <div class="dash-bar"><div class="dash-bar-fill" style="width: ${pct}%"></div></div>
-            <div class="dash-bar-label">${reservoir.remainingMl.toFixed(1)} / ${reservoir.fullMl.toFixed(1)} mL</div>
+            <div class="dash-bar"><div class="dash-bar-fill" style="width: ${dosedTodayPct}%"></div></div>
+            <div class="dash-bar-label">
+              ${dosedTodayMl.toFixed(2)} / ${reservoir.dailyScheduledMl.toFixed(2)} mL today
+            </div>
+            <div class="dash-reservoir-label">
+              ${reservoir.remainingMl.toFixed(1)} / ${reservoir.fullMl.toFixed(1)} mL remaining
+            </div>
           </div>
-          <div class="dash-today">Dosed today: ${(reservoir.dosedTodayMl ?? 0).toFixed(2)} mL</div>
           <div class="dash-days">
-            <div class="dash-days-circle">${reservoir.daysRemaining ?? "–"}</div>
+            <div class="dash-days-ring" style="--dash-pct: ${reservoirPct}">
+              <div class="dash-days-circle">${reservoir.daysRemaining ?? "–"}</div>
+            </div>
             <div class="dash-days-label">Days Left</div>
           </div>
           <button class="secondary" @click=${() => this._openRefillPrompt(pumpId, reservoir.fullMl)}>Refill</button>

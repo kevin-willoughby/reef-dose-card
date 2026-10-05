@@ -20,6 +20,7 @@ export interface ReservoirResponse {
   // Running total since the firmware's own daily reset (23:59:00) -
   // see reef-dose-service's PumpsService.getReservoir.
   dosedTodayMl: number;
+  dailyScheduledMl: number;
   daysRemaining: number | null;
 }
 
