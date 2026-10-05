@@ -16,6 +16,7 @@ import {
   deleteGroup,
   getGroups,
   getGroupSchedule,
+  getReservoir,
   getSchedule,
   updateGroup,
   updateGroupScheduleSlots,
@@ -26,10 +27,11 @@ import {
   type CardConfig,
   type GroupRecord,
   type HomeAssistant,
+  type ReservoirResponse,
   type ScheduleTarget,
 } from "./types";
 
-type Tab = "schedule" | "groups";
+type Tab = "dashboard" | "schedule" | "groups";
 
 // Group membership checkboxes must offer every physical pump (1-6),
 // not just whichever subset the card's own pump_ids config happens
@@ -61,7 +63,9 @@ export class ReefDoseCard extends LitElement {
   private _hass?: HomeAssistant;
   private _config?: CardConfig;
 
-  @state() private _tab: Tab = "schedule";
+  @state() private _tab: Tab = "dashboard";
+  @state() private _reservoirs: Record<string, ReservoirResponse | null> = {};
+  @state() private _reservoirsLoading = false;
   @state() private _activeTarget: ScheduleTarget | null = null;
   @state() private _scheduleSlots: Record<string, number> | null = null;
   @state() private _scheduleLoading = false;
@@ -92,6 +96,7 @@ export class ReefDoseCard extends LitElement {
     const firstSet = !this._hass;
     this._hass = hass;
     if (firstSet) {
+      void this._loadDashboard();
       void this._loadActiveSchedule();
       void this._loadGroups();
     }
@@ -150,6 +155,76 @@ export class ReefDoseCard extends LitElement {
       border-radius: 4px;
       margin-bottom: 12px;
       font-size: 0.9em;
+    }
+    .dash-row {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--divider-color, #2a2a2a);
+    }
+    .dash-row:last-child {
+      border-bottom: none;
+    }
+    .dash-name {
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    .dash-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .dash-empty {
+      color: var(--secondary-text-color);
+      font-size: 0.85em;
+    }
+    .dash-bar-wrap {
+      flex: 1;
+      min-width: 0;
+    }
+    .dash-bar {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--divider-color, #333);
+      overflow: hidden;
+    }
+    .dash-bar-fill {
+      height: 100%;
+      background: var(--primary-color);
+      border-radius: 3px;
+    }
+    .dash-bar-label {
+      margin-top: 4px;
+      font-size: 0.8em;
+      color: var(--secondary-text-color);
+      font-variant-numeric: tabular-nums;
+    }
+    .dash-today {
+      flex-shrink: 0;
+      font-size: 0.85em;
+      color: var(--secondary-text-color);
+      white-space: nowrap;
+    }
+    .dash-days {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .dash-days-circle {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 2px solid var(--primary-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .dash-days-label {
+      font-size: 0.7em;
+      color: var(--secondary-text-color);
+      text-align: center;
     }
     .row {
       display: flex;
@@ -272,6 +347,9 @@ export class ReefDoseCard extends LitElement {
         <div style="padding: 0 16px 16px">
           ${this._error ? html`<div class="error">${this._error}</div>` : ""}
           <div class="tabs">
+            <div class="tab ${this._tab === "dashboard" ? "active" : ""}" @click=${() => this._switchTab("dashboard")}>
+              Dashboard
+            </div>
             <div class="tab ${this._tab === "schedule" ? "active" : ""}" @click=${() => this._switchTab("schedule")}>
               Schedule
             </div>
@@ -279,7 +357,11 @@ export class ReefDoseCard extends LitElement {
               Groups
             </div>
           </div>
-          ${this._tab === "schedule" ? this._renderSchedule() : this._renderGroups()}
+          ${this._tab === "dashboard"
+            ? this._renderDashboard()
+            : this._tab === "schedule"
+              ? this._renderSchedule()
+              : this._renderGroups()}
         </div>
       </ha-card>
       ${this._renderPrompt()}
@@ -436,8 +518,79 @@ export class ReefDoseCard extends LitElement {
   // tab) is picked up without needing to re-add the card.
   private _switchTab(tab: Tab): void {
     this._tab = tab;
-    if (tab === "schedule") void this._loadActiveSchedule();
+    if (tab === "dashboard") void this._loadDashboard();
+    else if (tab === "schedule") void this._loadActiveSchedule();
     else void this._loadGroups();
+  }
+
+  // ---- Dashboard tab -----------------------------------------------
+  // One row per configured pump - remaining/full reservoir volume as a
+  // bar, today's running dosed total (the firmware's own 23:59:00-
+  // resetting accumulator - see reef-dose's dosed-pump.yaml), and
+  // days-left projected from the current schedule, mirroring the old
+  // Dosetronic app's dashboard. A pump the service rejects (no product
+  // assigned - requireDosedPump) gets a null entry and renders as
+  // "no reservoir data" rather than breaking the whole tab.
+
+  private async _loadDashboard(): Promise<void> {
+    if (!this._hass || !this._config) return;
+    this._reservoirsLoading = true;
+    this._error = null;
+    try {
+      const entries = await Promise.all(
+        this._config.pump_ids.map(async (pumpId) => {
+          try {
+            return [pumpId, await getReservoir(this._hass!, pumpId)] as const;
+          } catch {
+            // No product assigned yet, or device still starting up -
+            // not worth surfacing as a page-level error for every
+            // other pump's row that loaded fine.
+            return [pumpId, null] as const;
+          }
+        }),
+      );
+      this._reservoirs = Object.fromEntries(entries);
+    } catch (err) {
+      this._error = this._errorMessage(err);
+    } finally {
+      this._reservoirsLoading = false;
+    }
+  }
+
+  private _renderDashboard(): TemplateResult {
+    if (this._reservoirsLoading && Object.keys(this._reservoirs).length === 0) {
+      return html`<div>Loading…</div>`;
+    }
+    return html`${this._config!.pump_ids.map((pumpId) => this._renderDashboardRow(pumpId))}`;
+  }
+
+  private _renderDashboardRow(pumpId: string): TemplateResult {
+    const reservoir = this._reservoirs[pumpId];
+    if (!reservoir) {
+      return html`
+        <div class="dash-row">
+          <div class="dash-name">Pump ${pumpId}</div>
+          <div class="dash-meta dash-empty">No reservoir data - no product assigned yet, or device offline.</div>
+        </div>
+      `;
+    }
+    const pct = reservoir.fullMl > 0 ? Math.min(100, Math.max(0, (reservoir.remainingMl / reservoir.fullMl) * 100)) : 0;
+    return html`
+      <div class="dash-row">
+        <div class="dash-name">Pump ${pumpId}</div>
+        <div class="dash-meta">
+          <div class="dash-bar-wrap">
+            <div class="dash-bar"><div class="dash-bar-fill" style="width: ${pct}%"></div></div>
+            <div class="dash-bar-label">${reservoir.remainingMl.toFixed(1)} / ${reservoir.fullMl.toFixed(1)} mL</div>
+          </div>
+          <div class="dash-today">Dosed today: ${reservoir.dosedTodayMl.toFixed(2)} mL</div>
+          <div class="dash-days">
+            <div class="dash-days-circle">${reservoir.daysRemaining ?? "–"}</div>
+            <div class="dash-days-label">Days Left</div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   private async _loadActiveSchedule(): Promise<void> {

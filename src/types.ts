@@ -13,6 +13,16 @@ export interface ScheduleResponse {
   splitDoseEnabled: boolean;
 }
 
+export interface ReservoirResponse {
+  pumpId: string;
+  remainingMl: number;
+  fullMl: number;
+  // Running total since the firmware's own daily reset (23:59:00) -
+  // see reef-dose-service's PumpsService.getReservoir.
+  dosedTodayMl: number;
+  daysRemaining: number | null;
+}
+
 export interface GroupRecord {
   id: string;
   name: string;

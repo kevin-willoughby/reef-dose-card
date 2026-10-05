@@ -5,7 +5,13 @@
 // shape is the one documented, version-stable way to get a response
 // back from a service call, regardless of which HA core release this
 // card happens to be running against.
-import type { GroupRecord, GroupScheduleResponse, HomeAssistant, ScheduleResponse } from "./types";
+import type {
+  GroupRecord,
+  GroupScheduleResponse,
+  HomeAssistant,
+  ReservoirResponse,
+  ScheduleResponse,
+} from "./types";
 
 const DOMAIN = "reef_dose";
 
@@ -30,6 +36,10 @@ async function call(hass: HomeAssistant, service: string, serviceData: Record<st
 
 export function getSchedule(hass: HomeAssistant, pumpId: string): Promise<ScheduleResponse> {
   return callWithResponse<ScheduleResponse>(hass, "get_schedule", { pump_id: pumpId });
+}
+
+export function getReservoir(hass: HomeAssistant, pumpId: string): Promise<ReservoirResponse> {
+  return callWithResponse<ReservoirResponse>(hass, "get_reservoir", { pump_id: pumpId });
 }
 
 export function updateScheduleSlots(
