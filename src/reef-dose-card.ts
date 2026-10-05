@@ -65,6 +65,7 @@ export class ReefDoseCard extends LitElement {
 
   @state() private _tab: Tab = "dashboard";
   @state() private _reservoirs: Record<string, ReservoirResponse | null> = {};
+  @state() private _reservoirErrors: Record<string, string> = {};
   @state() private _reservoirsLoading = false;
   @state() private _activeTarget: ScheduleTarget | null = null;
   @state() private _scheduleSlots: Record<string, number> | null = null;
@@ -536,20 +537,26 @@ export class ReefDoseCard extends LitElement {
     if (!this._hass || !this._config) return;
     this._reservoirsLoading = true;
     this._error = null;
+    const errors: Record<string, string> = {};
     try {
       const entries = await Promise.all(
         this._config.pump_ids.map(async (pumpId) => {
           try {
             return [pumpId, await getReservoir(this._hass!, pumpId)] as const;
-          } catch {
-            // No product assigned yet, or device still starting up -
-            // not worth surfacing as a page-level error for every
-            // other pump's row that loaded fine.
+          } catch (err) {
+            // No product assigned yet, device still starting up, or
+            // (confirmed live, 2026-10-05) the get_reservoir service
+            // not yet registered because reef-dose-ha hasn't been
+            // updated/reloaded - keep the reason per-pump rather than
+            // a page-level error, so one bad pump doesn't hide every
+            // other row that loaded fine.
+            errors[pumpId] = this._errorMessage(err);
             return [pumpId, null] as const;
           }
         }),
       );
       this._reservoirs = Object.fromEntries(entries);
+      this._reservoirErrors = errors;
     } catch (err) {
       this._error = this._errorMessage(err);
     } finally {
@@ -567,10 +574,11 @@ export class ReefDoseCard extends LitElement {
   private _renderDashboardRow(pumpId: string): TemplateResult {
     const reservoir = this._reservoirs[pumpId];
     if (!reservoir) {
+      const reason = this._reservoirErrors[pumpId] ?? "No reservoir data - no product assigned yet, or device offline.";
       return html`
         <div class="dash-row">
           <div class="dash-name">Pump ${pumpId}</div>
-          <div class="dash-meta dash-empty">No reservoir data - no product assigned yet, or device offline.</div>
+          <div class="dash-meta dash-empty">${reason}</div>
         </div>
       `;
     }
@@ -583,7 +591,7 @@ export class ReefDoseCard extends LitElement {
             <div class="dash-bar"><div class="dash-bar-fill" style="width: ${pct}%"></div></div>
             <div class="dash-bar-label">${reservoir.remainingMl.toFixed(1)} / ${reservoir.fullMl.toFixed(1)} mL</div>
           </div>
-          <div class="dash-today">Dosed today: ${reservoir.dosedTodayMl.toFixed(2)} mL</div>
+          <div class="dash-today">Dosed today: ${(reservoir.dosedTodayMl ?? 0).toFixed(2)} mL</div>
           <div class="dash-days">
             <div class="dash-days-circle">${reservoir.daysRemaining ?? "–"}</div>
             <div class="dash-days-label">Days Left</div>

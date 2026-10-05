@@ -15,18 +15,42 @@ import type {
 
 const DOMAIN = "reef_dose";
 
+// A service call that's unregistered (integration not yet updated/
+// reloaded to the version that added it) has been observed to hang
+// the underlying websocket promise indefinitely instead of rejecting
+// cleanly - confirmed live, 2026-10-05: the Dashboard tab's "Loading…"
+// never resolved to either data or an error after calling the brand-
+// new get_reservoir service before reef-dose-ha had been reloaded.
+// This bounds every call so a stale/missing service always surfaces
+// as a clear error in the UI instead of a silent permanent spinner.
+const RESPONSE_TIMEOUT_MS = 10_000;
+
 async function callWithResponse<T>(
   hass: HomeAssistant,
   service: string,
   serviceData: Record<string, unknown>,
 ): Promise<T> {
-  const result = await hass.connection.sendMessagePromise({
-    type: "call_service",
-    domain: DOMAIN,
-    service,
-    service_data: serviceData,
-    return_response: true,
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(
+      () =>
+        reject(
+          new Error(
+            `reef_dose.${service} did not respond within ${RESPONSE_TIMEOUT_MS / 1000}s - is reef-dose-ha updated and reloaded?`,
+          ),
+        ),
+      RESPONSE_TIMEOUT_MS,
+    );
   });
+  const result = await Promise.race([
+    hass.connection.sendMessagePromise({
+      type: "call_service",
+      domain: DOMAIN,
+      service,
+      service_data: serviceData,
+      return_response: true,
+    }),
+    timeout,
+  ]);
   return (result.response as Record<string, unknown>) as T;
 }
 
