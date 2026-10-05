@@ -66,6 +66,10 @@ export function getReservoir(hass: HomeAssistant, pumpId: string): Promise<Reser
   return callWithResponse<ReservoirResponse>(hass, "get_reservoir", { pump_id: pumpId });
 }
 
+export function refillReservoir(hass: HomeAssistant, pumpId: string, fullMl: number): Promise<void> {
+  return call(hass, "refill_reservoir", { pump_id: pumpId, full_ml: fullMl });
+}
+
 export function updateScheduleSlots(
   hass: HomeAssistant,
   pumpId: string,

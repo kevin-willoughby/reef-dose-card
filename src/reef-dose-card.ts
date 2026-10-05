@@ -18,6 +18,7 @@ import {
   getGroupSchedule,
   getReservoir,
   getSchedule,
+  refillReservoir,
   updateGroup,
   updateGroupScheduleSlots,
   updateScheduleSlots,
@@ -596,9 +597,34 @@ export class ReefDoseCard extends LitElement {
             <div class="dash-days-circle">${reservoir.daysRemaining ?? "–"}</div>
             <div class="dash-days-label">Days Left</div>
           </div>
+          <button class="secondary" @click=${() => this._openRefillPrompt(pumpId, reservoir.fullMl)}>Refill</button>
         </div>
       </div>
     `;
+  }
+
+  // Always asks for the new full volume (pre-filled with the current
+  // one as a starting point, not silently reused) - reef-dose-service
+  // now requires it on every refill, replacing the old behaviour of
+  // resetting remainingMl to whatever fullMl happened to already be
+  // configured, which let it drift from the real container size.
+  private _openRefillPrompt(pumpId: string, currentFullMl: number): void {
+    this._openPrompt({
+      title: `Refill Pump ${pumpId} (new full volume, mL)`,
+      initialValue: currentFullMl,
+      min: 0,
+      max: 20000,
+      step: 1,
+      unit: "mL",
+      onSave: async (fullMl) => {
+        try {
+          await refillReservoir(this._hass!, pumpId, fullMl);
+          await this._loadDashboard();
+        } catch (err) {
+          this._error = this._errorMessage(err);
+        }
+      },
+    });
   }
 
   private async _loadActiveSchedule(): Promise<void> {
