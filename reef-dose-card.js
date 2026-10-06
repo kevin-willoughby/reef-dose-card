@@ -445,7 +445,7 @@ var Dt=Object.defineProperty;var qt=Object.getOwnPropertyDescriptor;var p=(i,e,t
       color: var(--primary-text-color);
       border-radius: 8px;
       padding: 20px;
-      min-width: 260px;
+      min-width: 320px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     }
     .modal h3 {
@@ -459,6 +459,10 @@ var Dt=Object.defineProperty;var qt=Object.getOwnPropertyDescriptor;var p=(i,e,t
     }
     .modal input[type="number"] {
       width: 120px;
+    }
+    .modal input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
     }
   `,p([h()],c.prototype,"_tab",2),p([h()],c.prototype,"_reservoirs",2),p([h()],c.prototype,"_reservoirErrors",2),p([h()],c.prototype,"_reservoirsLoading",2),p([h()],c.prototype,"_activeTarget",2),p([h()],c.prototype,"_scheduleSlots",2),p([h()],c.prototype,"_scheduleLoading",2),p([h()],c.prototype,"_editingHour",2),p([h()],c.prototype,"_editValue",2),p([h()],c.prototype,"_pumpNames",2),p([h()],c.prototype,"_groups",2),p([h()],c.prototype,"_groupsLoading",2),p([h()],c.prototype,"_showNewGroupForm",2),p([h()],c.prototype,"_newGroupId",2),p([h()],c.prototype,"_newGroupName",2),p([h()],c.prototype,"_newGroupPumpIds",2),p([h()],c.prototype,"_editingGroupId",2),p([h()],c.prototype,"_editGroupPumpIds",2),p([h()],c.prototype,"_prompt",2),p([h()],c.prototype,"_confirm",2),p([h()],c.prototype,"_renamePumpId",2),p([h()],c.prototype,"_renameValue",2),p([h()],c.prototype,"_error",2),c=p([xt("reef-dose-card")],c);window.customCards=[...window.customCards??[],{type:"reef-dose-card",name:"Reef Dose Card",description:"Per-slot schedule editor and scaling-group management for reef-dose."}];export{c as ReefDoseCard};
 /*! Bundled license information:

@@ -392,7 +392,7 @@ export class ReefDoseCard extends LitElement {
       color: var(--primary-text-color);
       border-radius: 8px;
       padding: 20px;
-      min-width: 260px;
+      min-width: 320px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     }
     .modal h3 {
@@ -406,6 +406,10 @@ export class ReefDoseCard extends LitElement {
     }
     .modal input[type="number"] {
       width: 120px;
+    }
+    .modal input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
     }
   `;
 
