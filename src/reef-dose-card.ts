@@ -22,6 +22,7 @@ import {
   getReservoir,
   getSchedule,
   refillReservoir,
+  setName,
   startCalibration,
   updateGroup,
   updateGroupScheduleSlots,
@@ -101,6 +102,8 @@ export class ReefDoseCard extends LitElement {
   @state() private _editGroupPumpIds = new Set<string>();
   @state() private _prompt: PromptState | null = null;
   @state() private _confirm: ConfirmState | null = null;
+  @state() private _renamePumpId: string | null = null;
+  @state() private _renameValue = "";
   @state() private _error: string | null = null;
 
   setConfig(config: CardConfig): void {
@@ -212,6 +215,10 @@ export class ReefDoseCard extends LitElement {
     .dash-name {
       font-weight: 500;
       margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .dash-name:hover {
+      text-decoration: underline;
     }
     .dash-meta {
       display: flex;
@@ -429,6 +436,7 @@ export class ReefDoseCard extends LitElement {
       </ha-card>
       ${this._renderPrompt()}
       ${this._renderConfirm()}
+      ${this._renderRenamePrompt()}
     `;
   }
 
@@ -508,6 +516,63 @@ export class ReefDoseCard extends LitElement {
     if (!this._confirm || this._confirm.busy) return;
     this._confirm = { ...this._confirm, busy: true };
     await this._confirm.onConfirm();
+  }
+
+  // ---- Pump rename (click a Dashboard row's name) ----
+  // Own dedicated prompt rather than reusing PromptState - that one's
+  // input/validation is numeric-only (min/max/step/Number() parsing,
+  // see _savePrompt), which doesn't fit a free-text name.
+
+  private _openRenamePrompt(pumpId: string): void {
+    this._renamePumpId = pumpId;
+    this._renameValue = this._pumpNames[pumpId] ?? "";
+  }
+
+  private _cancelRename(): void {
+    this._renamePumpId = null;
+  }
+
+  private _renderRenamePrompt(): TemplateResult {
+    if (!this._renamePumpId) return html``;
+    const pumpId = this._renamePumpId;
+    return html`
+      <div class="modal-overlay" @click=${(e: Event) => e.target === e.currentTarget && this._cancelRename()}>
+        <div class="modal">
+          <h3>Rename ${this._pumpLabel(pumpId)}</h3>
+          <div class="field">
+            <input
+              type="text"
+              maxlength="40"
+              .value=${this._renameValue}
+              @input=${(e: InputEvent) => (this._renameValue = (e.target as HTMLInputElement).value)}
+              @keydown=${(e: KeyboardEvent) => e.key === "Enter" && this._saveRename()}
+            />
+          </div>
+          <div class="actions">
+            <button @click=${() => this._saveRename()}>Save</button>
+            <button class="secondary" @click=${() => this._cancelRename()}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private async _saveRename(): Promise<void> {
+    if (!this._renamePumpId) return;
+    const pumpId = this._renamePumpId;
+    const name = this._renameValue.trim();
+    if (!name) {
+      this._error = "Name can't be empty.";
+      return;
+    }
+    this._error = null;
+    try {
+      const saved = await setName(this._hass!, pumpId, name);
+      this._pumpNames = { ...this._pumpNames, [pumpId]: saved };
+      this._renamePumpId = null;
+    } catch (err) {
+      this._error = this._errorMessage(err);
+    }
   }
 
   private _cancelConfirm(): void {
@@ -726,7 +791,7 @@ export class ReefDoseCard extends LitElement {
       const reason = this._reservoirErrors[pumpId] ?? "No reservoir data - no product assigned yet, or device offline.";
       return html`
         <div class="dash-row">
-          <div class="dash-name">${this._pumpLabel(pumpId)}</div>
+          <div class="dash-name" @click=${() => this._openRenamePrompt(pumpId)}>${this._pumpLabel(pumpId)}</div>
           <div class="dash-meta dash-empty">${reason}</div>
         </div>
       `;
@@ -741,7 +806,7 @@ export class ReefDoseCard extends LitElement {
       reservoir.fullMl > 0 ? Math.min(100, Math.max(0, (reservoir.remainingMl / reservoir.fullMl) * 100)) : 0;
     return html`
       <div class="dash-row">
-        <div class="dash-name">${this._pumpLabel(pumpId)}</div>
+        <div class="dash-name" @click=${() => this._openRenamePrompt(pumpId)}>${this._pumpLabel(pumpId)}</div>
         <div class="dash-meta">
           <div class="dash-bar-wrap">
             <div class="dash-bar"><div class="dash-bar-fill" style="width: ${dosedTodayPct}%"></div></div>
