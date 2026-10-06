@@ -18,6 +18,7 @@ import {
   deleteGroup,
   getGroups,
   getGroupSchedule,
+  getName,
   getReservoir,
   getSchedule,
   refillReservoir,
@@ -89,6 +90,7 @@ export class ReefDoseCard extends LitElement {
   @state() private _scheduleLoading = false;
   @state() private _editingHour: string | null = null;
   @state() private _editValue = "";
+  @state() private _pumpNames: Record<string, string> = {};
   @state() private _groups: GroupRecord[] = [];
   @state() private _groupsLoading = false;
   @state() private _showNewGroupForm = false;
@@ -118,7 +120,32 @@ export class ReefDoseCard extends LitElement {
       void this._loadDashboard();
       void this._loadActiveSchedule();
       void this._loadGroups();
+      void this._loadPumpNames();
     }
+  }
+
+  // All 6 physical pumps, not just this._config.pump_ids - the Groups
+  // tab's membership checkboxes/member lists (see ALL_PUMP_IDS) can
+  // reference any pump regardless of which ones this card's Schedule
+  // tab was configured to show. A pump that errors (offline, no name
+  // set) just keeps its "Pump N" fallback rather than failing the
+  // whole batch.
+  private async _loadPumpNames(): Promise<void> {
+    if (!this._hass) return;
+    const entries = await Promise.all(
+      ALL_PUMP_IDS.map(async (id) => {
+        try {
+          return [id, await getName(this._hass!, id)] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const names: Record<string, string> = {};
+    for (const entry of entries) {
+      if (entry) names[entry[0]] = entry[1];
+    }
+    this._pumpNames = names;
   }
 
   getCardSize(): number {
@@ -580,14 +607,15 @@ export class ReefDoseCard extends LitElement {
     return this._groups.find((g) => g.id === groupId)?.name ?? groupId;
   }
 
-  // reef-dose-ha's sensor.pump_<id>_label tracks the device's own
-  // OLED display label live (see reef-dose-ha's sensor.py) - reading
-  // it here means renaming a pump on the device shows up on this
-  // card immediately, with no card reconfiguration/reimport needed.
-  // Falls back to "Pump N" if the sensor is missing or blank.
+  // Populated once from reef_dose.get_name (see _loadPumpNames) rather
+  // than guessed from a sensor entity_id - confirmed live, 2026-10-06:
+  // a renamed/prefixed config entry produces
+  // "sensor.extension_pump_1_label" instead of the assumed
+  // "sensor.pump_1_label", so entity_id guessing silently fell back to
+  // "Pump N" everywhere. Falls back to "Pump N" itself only before
+  // _loadPumpNames has resolved, or for an id it didn't return.
   private _pumpLabel(pumpId: string): string {
-    const state = this._hass?.states[`sensor.pump_${pumpId}_label`]?.state;
-    return state && state !== "unknown" && state !== "unavailable" ? state : `Pump ${pumpId}`;
+    return this._pumpNames[pumpId] ?? `Pump ${pumpId}`;
   }
 
   private _renderScheduleRows(slots: Record<string, number>): TemplateResult {

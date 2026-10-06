@@ -58,6 +58,11 @@ async function call(hass: HomeAssistant, service: string, serviceData: Record<st
   await hass.callService(DOMAIN, service, serviceData);
 }
 
+export async function getName(hass: HomeAssistant, pumpId: string): Promise<string> {
+  const result = await callWithResponse<{ name: string }>(hass, "get_name", { pump_id: pumpId });
+  return result.name;
+}
+
 export function getSchedule(hass: HomeAssistant, pumpId: string): Promise<ScheduleResponse> {
   return callWithResponse<ScheduleResponse>(hass, "get_schedule", { pump_id: pumpId });
 }
