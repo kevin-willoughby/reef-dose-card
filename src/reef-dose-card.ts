@@ -494,7 +494,7 @@ export class ReefDoseCard extends LitElement {
 
   private _openCalibratePrompt(pumpId: string): void {
     this._confirm = {
-      title: `Calibrate Pump ${pumpId}`,
+      title: `Calibrate ${this._pumpLabel(pumpId)}`,
       message: "This briefly runs the pump so you can measure how much it actually dispenses.",
       confirmLabel: "Start Calibration",
       busy: false,
@@ -513,7 +513,7 @@ export class ReefDoseCard extends LitElement {
 
   private _openMeasurePrompt(pumpId: string, sessionId: number): void {
     this._openPrompt({
-      title: `Calibrate Pump ${pumpId} - measured volume (mL)`,
+      title: `Calibrate ${this._pumpLabel(pumpId)} - measured volume (mL)`,
       initialValue: 0,
       min: 0.01,
       max: 2000,
@@ -553,7 +553,7 @@ export class ReefDoseCard extends LitElement {
                     class="pump-chip ${this._isActiveTarget(target) ? "active" : ""}"
                     @click=${() => this._selectTarget(target)}
                   >
-                    ${target.kind === "pump" ? `Pump ${target.id}` : this._groupLabel(target.id)}
+                    ${target.kind === "pump" ? this._pumpLabel(target.id) : this._groupLabel(target.id)}
                   </div>
                 `,
               )}
@@ -578,6 +578,16 @@ export class ReefDoseCard extends LitElement {
   // _loadGroups has resolved yet.
   private _groupLabel(groupId: string): string {
     return this._groups.find((g) => g.id === groupId)?.name ?? groupId;
+  }
+
+  // reef-dose-ha's sensor.pump_<id>_label tracks the device's own
+  // OLED display label live (see reef-dose-ha's sensor.py) - reading
+  // it here means renaming a pump on the device shows up on this
+  // card immediately, with no card reconfiguration/reimport needed.
+  // Falls back to "Pump N" if the sensor is missing or blank.
+  private _pumpLabel(pumpId: string): string {
+    const state = this._hass?.states[`sensor.pump_${pumpId}_label`]?.state;
+    return state && state !== "unknown" && state !== "unavailable" ? state : `Pump ${pumpId}`;
   }
 
   private _renderScheduleRows(slots: Record<string, number>): TemplateResult {
@@ -688,7 +698,7 @@ export class ReefDoseCard extends LitElement {
       const reason = this._reservoirErrors[pumpId] ?? "No reservoir data - no product assigned yet, or device offline.";
       return html`
         <div class="dash-row">
-          <div class="dash-name">Pump ${pumpId}</div>
+          <div class="dash-name">${this._pumpLabel(pumpId)}</div>
           <div class="dash-meta dash-empty">${reason}</div>
         </div>
       `;
@@ -703,7 +713,7 @@ export class ReefDoseCard extends LitElement {
       reservoir.fullMl > 0 ? Math.min(100, Math.max(0, (reservoir.remainingMl / reservoir.fullMl) * 100)) : 0;
     return html`
       <div class="dash-row">
-        <div class="dash-name">Pump ${pumpId}</div>
+        <div class="dash-name">${this._pumpLabel(pumpId)}</div>
         <div class="dash-meta">
           <div class="dash-bar-wrap">
             <div class="dash-bar"><div class="dash-bar-fill" style="width: ${dosedTodayPct}%"></div></div>
@@ -734,7 +744,7 @@ export class ReefDoseCard extends LitElement {
   // configured, which let it drift from the real container size.
   private _openRefillPrompt(pumpId: string, currentFullMl: number): void {
     this._openPrompt({
-      title: `Refill Pump ${pumpId} (new full volume, mL)`,
+      title: `Refill ${this._pumpLabel(pumpId)} (new full volume, mL)`,
       initialValue: currentFullMl,
       min: 0,
       max: 20000,
@@ -795,7 +805,7 @@ export class ReefDoseCard extends LitElement {
 
   private _openAutoDividePrompt(currentDailyMl: number): void {
     const target = this._activeTarget!;
-    const label = target.kind === "pump" ? `Pump ${target.id}` : this._groupLabel(target.id);
+    const label = target.kind === "pump" ? this._pumpLabel(target.id) : this._groupLabel(target.id);
     this._openPrompt({
       title: `Auto-Divide ${label} (mL/day)`,
       initialValue: currentDailyMl,
@@ -834,7 +844,7 @@ export class ReefDoseCard extends LitElement {
         <div class="group-header">
           <strong>${group.name}</strong>
         </div>
-        <div class="group-meta">id: ${group.id} · members: ${group.pumpIds.map((id) => `Pump ${id}`).join(", ") || "none"}</div>
+        <div class="group-meta">id: ${group.id} · members: ${group.pumpIds.map((id) => this._pumpLabel(id)).join(", ") || "none"}</div>
         ${editing
           ? html`
               <div class="checkbox-list">
@@ -846,7 +856,7 @@ export class ReefDoseCard extends LitElement {
                         .checked=${this._editGroupPumpIds.has(id)}
                         @change=${(e: Event) => this._toggleEditPump(id, (e.target as HTMLInputElement).checked)}
                       />
-                      Pump ${id}
+                      ${this._pumpLabel(id)}
                     </label>
                   `,
                 )}
@@ -891,7 +901,7 @@ export class ReefDoseCard extends LitElement {
                   .checked=${this._newGroupPumpIds.has(id)}
                   @change=${(e: Event) => this._toggleNewPump(id, (e.target as HTMLInputElement).checked)}
                 />
-                Pump ${id}
+                ${this._pumpLabel(id)}
               </label>
             `,
           )}
@@ -1001,7 +1011,7 @@ export class ReefDoseCard extends LitElement {
   // its members from any future rescaling with no undo. A native
   // confirm() is minimal but was previously entirely absent.
   private _confirmRemoveGroup(group: GroupRecord): void {
-    const memberList = group.pumpIds.map((id) => `Pump ${id}`).join(", ") || "no members";
+    const memberList = group.pumpIds.map((id) => this._pumpLabel(id)).join(", ") || "no members";
     if (window.confirm(`Delete group "${group.name}"? Members (${memberList}) keep dosing whatever they're currently set to, but will no longer be kept in sync with each other.`)) {
       void this._removeGroup(group.id);
     }
