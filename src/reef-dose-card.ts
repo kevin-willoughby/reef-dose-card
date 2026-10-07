@@ -21,6 +21,8 @@ import {
   getName,
   getReservoir,
   getSchedule,
+  manualDose,
+  primePump,
   refillReservoir,
   setName,
   startCalibration,
@@ -797,6 +799,10 @@ export class ReefDoseCard extends LitElement {
         <div class="dash-row">
           <div class="dash-name" @click=${() => this._openRenamePrompt(pumpId)}>${this._pumpLabel(pumpId)}</div>
           <div class="dash-meta dash-empty">${reason}</div>
+          <div class="actions">
+            <button class="secondary" @click=${() => this._primePump(pumpId)}>Prime</button>
+            <button class="secondary" @click=${() => this._openManualDosePrompt(pumpId)}>Manual Dose</button>
+          </div>
         </div>
       `;
     }
@@ -829,9 +835,48 @@ export class ReefDoseCard extends LitElement {
           </div>
           <button class="secondary" @click=${() => this._openRefillPrompt(pumpId, reservoir.fullMl)}>Refill</button>
           <button class="secondary" @click=${() => this._openCalibratePrompt(pumpId)}>Calibrate</button>
+          <button class="secondary" @click=${() => this._primePump(pumpId)}>Prime</button>
+          <button class="secondary" @click=${() => this._openManualDosePrompt(pumpId)}>Manual Dose</button>
         </div>
       </div>
     `;
+  }
+
+  // ---- Prime / Manual Dose (Dashboard row buttons) -----------------
+  // Prime just fires the firmware's 10s prime pulse - no confirmation,
+  // mirroring the old Dosetronic app and the integration's own Prime
+  // button entity. Manual Dose asks for an mL amount capped at 50 -
+  // ManualDoseDto's own hard max (reef-dose-service), which the
+  // firmware independently re-checks - so the popup can't accept a
+  // value that's guaranteed to be rejected on save.
+
+  private async _primePump(pumpId: string): Promise<void> {
+    this._error = null;
+    try {
+      await primePump(this._hass!, pumpId);
+    } catch (err) {
+      this._error = this._errorMessage(err);
+    }
+  }
+
+  private _openManualDosePrompt(pumpId: string): void {
+    this._openPrompt({
+      title: `Manual Dose ${this._pumpLabel(pumpId)} (mL)`,
+      initialValue: 0,
+      min: 0.01,
+      max: 50,
+      step: 0.01,
+      unit: "mL",
+      saveLabel: "OK",
+      onSave: async (ml) => {
+        try {
+          await manualDose(this._hass!, pumpId, ml);
+          await this._loadDashboard();
+        } catch (err) {
+          this._error = this._errorMessage(err);
+        }
+      },
+    });
   }
 
   // Always asks for the new full volume (pre-filled with the current

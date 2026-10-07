@@ -80,6 +80,14 @@ export function refillReservoir(hass: HomeAssistant, pumpId: string, fullMl: num
   return call(hass, "refill_reservoir", { pump_id: pumpId, full_ml: fullMl });
 }
 
+export function primePump(hass: HomeAssistant, pumpId: string): Promise<void> {
+  return call(hass, "prime", { pump_id: pumpId });
+}
+
+export function manualDose(hass: HomeAssistant, pumpId: string, ml: number): Promise<void> {
+  return call(hass, "manual_dose", { pump_id: pumpId, ml });
+}
+
 // Two-step calibration: start_calibration runs the pump briefly and
 // hands back a sessionId that must be threaded through to
 // apply_calibration - the firmware silently no-ops on a stale/
