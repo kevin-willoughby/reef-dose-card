@@ -119,7 +119,7 @@ var Ft=Object.defineProperty;var Bt=Object.getOwnPropertyDescriptor;var p=(i,e,t
         <div class="dash-row">
           <div class="dash-name" @click=${()=>this._openRenamePrompt(t)}>${this._pumpLabel(t)}</div>
           <div class="dash-meta dash-empty">${l}</div>
-          <div class="actions">
+          <div class="dash-actions">
             <button class="secondary" @click=${()=>this._primePump(t)}>Prime</button>
             <button class="secondary" @click=${()=>this._openManualDosePrompt(t)}>Manual Dose</button>
           </div>
@@ -143,10 +143,12 @@ var Ft=Object.defineProperty;var Bt=Object.getOwnPropertyDescriptor;var p=(i,e,t
             </div>
             <div class="dash-days-label">Days Left</div>
           </div>
-          <button class="secondary" @click=${()=>this._openRefillPrompt(t,s.fullMl)}>Refill</button>
-          <button class="secondary" @click=${()=>this._openCalibratePrompt(t)}>Calibrate</button>
-          <button class="secondary" @click=${()=>this._primePump(t)}>Prime</button>
-          <button class="secondary" @click=${()=>this._openManualDosePrompt(t)}>Manual Dose</button>
+          <div class="dash-actions">
+            <button class="secondary" @click=${()=>this._openRefillPrompt(t,s.fullMl)}>Refill</button>
+            <button class="secondary" @click=${()=>this._openCalibratePrompt(t)}>Calibrate</button>
+            <button class="secondary" @click=${()=>this._primePump(t)}>Prime</button>
+            <button class="secondary" @click=${()=>this._openManualDosePrompt(t)}>Manual Dose</button>
+          </div>
         </div>
       </div>
     `}async _primePump(t){this._error=null;try{await Mt(this._hass,t)}catch(s){this._error=this._errorMessage(s)}}_openManualDosePrompt(t){this._openPrompt({title:`Manual Dose ${this._pumpLabel(t)} (mL)`,initialValue:0,min:.01,max:50,step:.01,unit:"mL",saveLabel:"OK",onSave:async s=>{try{await Tt(this._hass,t,s),await this._loadDashboard()}catch(r){this._error=this._errorMessage(r)}}})}_openRefillPrompt(t,s){this._openPrompt({title:`Refill ${this._pumpLabel(t)} (new full volume, mL)`,initialValue:s,min:0,max:2e4,step:1,unit:"mL",onSave:async r=>{try{await Rt(this._hass,t,r),await this._loadDashboard()}catch(o){this._error=this._errorMessage(o)}}})}async _loadActiveSchedule(){if(!(!this._hass||!this._activeTarget)){this._scheduleLoading=!0,this._error=null;try{this._scheduleSlots=this._activeTarget.kind==="pump"?(await Et(this._hass,this._activeTarget.id)).slots:(await jt(this._hass,this._activeTarget.id)).slots}catch(t){this._error=this._errorMessage(t)}finally{this._scheduleLoading=!1}}}_startEditSlot(t,s){this._editingHour=t,this._editValue=s.toFixed(2)}async _saveSlot(t){let s=Number(this._editValue);if(!Number.isFinite(s)||s<0||s>50){this._error="Slot value must be between 0 and 50ml.";return}this._error=null;try{let r=this._activeTarget;r.kind==="pump"?await Lt(this._hass,r.id,{[t]:s}):await Dt(this._hass,r.id,{[t]:s}),this._editingHour=null,await this._loadActiveSchedule()}catch(r){this._error=this._errorMessage(r)}}_openAutoDividePrompt(t){let s=this._activeTarget,r=s.kind==="pump"?this._pumpLabel(s.id):this._groupLabel(s.id);this._openPrompt({title:`Auto-Divide ${r} (mL/day)`,initialValue:t,min:0,max:1200,step:.01,unit:"mL/day",onSave:async o=>{try{s.kind==="pump"?await Ht(this._hass,s.id,o):await zt(this._hass,s.id,o),await this._loadActiveSchedule()}catch(n){this._error=this._errorMessage(n)}}})}_renderGroups(){return d`
@@ -282,6 +284,7 @@ var Ft=Object.defineProperty;var Bt=Object.getOwnPropertyDescriptor;var p=(i,e,t
     .dash-meta {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 16px;
     }
     .dash-empty {
@@ -289,8 +292,14 @@ var Ft=Object.defineProperty;var Bt=Object.getOwnPropertyDescriptor;var p=(i,e,t
       font-size: 0.85em;
     }
     .dash-bar-wrap {
-      flex: 1;
+      flex: 1 1 200px;
       min-width: 0;
+    }
+    .dash-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
     }
     .dash-bar {
       height: 6px;

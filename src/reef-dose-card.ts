@@ -225,6 +225,7 @@ export class ReefDoseCard extends LitElement {
     .dash-meta {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 16px;
     }
     .dash-empty {
@@ -232,8 +233,14 @@ export class ReefDoseCard extends LitElement {
       font-size: 0.85em;
     }
     .dash-bar-wrap {
-      flex: 1;
+      flex: 1 1 200px;
       min-width: 0;
+    }
+    .dash-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
     }
     .dash-bar {
       height: 6px;
@@ -799,7 +806,7 @@ export class ReefDoseCard extends LitElement {
         <div class="dash-row">
           <div class="dash-name" @click=${() => this._openRenamePrompt(pumpId)}>${this._pumpLabel(pumpId)}</div>
           <div class="dash-meta dash-empty">${reason}</div>
-          <div class="actions">
+          <div class="dash-actions">
             <button class="secondary" @click=${() => this._primePump(pumpId)}>Prime</button>
             <button class="secondary" @click=${() => this._openManualDosePrompt(pumpId)}>Manual Dose</button>
           </div>
@@ -833,10 +840,12 @@ export class ReefDoseCard extends LitElement {
             </div>
             <div class="dash-days-label">Days Left</div>
           </div>
-          <button class="secondary" @click=${() => this._openRefillPrompt(pumpId, reservoir.fullMl)}>Refill</button>
-          <button class="secondary" @click=${() => this._openCalibratePrompt(pumpId)}>Calibrate</button>
-          <button class="secondary" @click=${() => this._primePump(pumpId)}>Prime</button>
-          <button class="secondary" @click=${() => this._openManualDosePrompt(pumpId)}>Manual Dose</button>
+          <div class="dash-actions">
+            <button class="secondary" @click=${() => this._openRefillPrompt(pumpId, reservoir.fullMl)}>Refill</button>
+            <button class="secondary" @click=${() => this._openCalibratePrompt(pumpId)}>Calibrate</button>
+            <button class="secondary" @click=${() => this._primePump(pumpId)}>Prime</button>
+            <button class="secondary" @click=${() => this._openManualDosePrompt(pumpId)}>Manual Dose</button>
+          </div>
         </div>
       </div>
     `;
